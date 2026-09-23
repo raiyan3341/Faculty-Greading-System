@@ -1,0 +1,175 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Modern Vibrant Design System — high contrast, colorful, crisp white.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-ink: var(--ink);
+  --color-inksoft: var(--inksoft);
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-cream: var(--cream);
+  --color-line: var(--line);
+  --color-oxblood: var(--oxblood);
+  --color-sealred: var(--sealred);
+  --color-forest: var(--forest);
+  --color-gold: var(--gold);
+  --color-late: var(--late);
+  --color-mute: var(--mute);
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* গাঢ়, ফুটে ওঠা টেক্সট */
+  --ink: #0b1220;            /* প্রায় কালো — হেডিং ও মূল টেক্সট */
+  --inksoft: #334155;        /* সহায়ক টেক্সট (আগের চেয়ে গাঢ়) */
+  --mute: #475569;           /* লেবেলও এখন স্পষ্ট পড়া যায় */
+
+  /* সারফেস */
+  --paper: #f4f6fb;          /* হালকা নীলচে-সাদা ব্যাকগ্রাউন্ড */
+  --panel: #ffffff;
+  --cream: #eef1f8;
+  --line: #dfe4ee;
+
+  /* ভাইব্রেন্ট অ্যাকসেন্ট */
+  --oxblood: #4f46e5;        /* ইন্ডিগো */
+  --sealred: #e11d48;        /* রুবি রেড */
+  --forest: #059669;         /* এমারল্ড */
+  --gold: #d97706;           /* অ্যাম্বার */
+  --late: #ea580c;           /* অরেঞ্জ */
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--panel);
+  --popover-foreground: var(--ink);
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #e0e7ff;
+  --secondary-foreground: #312e81;
+  --muted: #eef1f8;
+  --muted-foreground: var(--mute);
+  --accent: #e0e7ff;
+  --accent-foreground: #3730a3;
+  --destructive: var(--sealred);
+  --destructive-foreground: #ffffff;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: #4f46e5;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* হেডিংগুলো বেশি বোল্ড */
+  h1, h2, h3, h4 {
+    color: var(--ink);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ---------- ফুটে ওঠা কার্ড ও এলিভেশন ---------- */
+@layer utilities {
+  .card, [data-slot="card"] {
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.06),
+      0 8px 24px rgba(79, 70, 229, 0.08);
+  }
+
+  .card:hover, [data-slot="card"]:hover {
+    box-shadow:
+      0 2px 4px rgba(15, 23, 42, 0.08),
+      0 12px 32px rgba(79, 70, 229, 0.14);
+  }
+
+  /* প্রাইমারি বাটনে রঙিন গ্রেডিয়েন্ট */
+  .bg-primary {
+    background-image: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+  }
+
+  .bg-primary:hover {
+    filter: brightness(1.08);
+    box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45);
+  }
+
+  /* সাইডবার/মেনু আইটেম অ্যাকটিভ স্টেট */
+  [data-active="true"], .aria-current\:page[aria-current="page"] {
+    font-weight: 600;
+  }
+}
+
+@keyframes ledger-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility fade-up {
+  animation: ledger-fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@utility label-caps {
+  font-size: 11px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--inksoft);
+}
