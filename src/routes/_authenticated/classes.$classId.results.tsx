@@ -28,7 +28,10 @@ export const Route = createFileRoute("/_authenticated/classes/$classId/results")
   head: () => ({
     meta: [
       { title: "Results — Registrar" },
-      { name: "description", content: "Weighted totals, percentages and letter grades for this class." },
+      {
+        name: "description",
+        content: "Weighted totals, percentages and letter grades for this class.",
+      },
       { property: "og:title", content: "Results — Registrar" },
       { property: "og:description", content: "Weighted totals, percentages and letter grades." },
     ],
@@ -50,6 +53,7 @@ function ResultsPage() {
 
   const [q, setQ] = useState("");
   const [weightDraft, setWeightDraft] = useState<Record<string, string> | null>(null);
+  const [scaleDraft, setScaleDraft] = useState<{ grade: string; min: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   const stats = attendanceByStudent(attendance?.sessions ?? [], attendance?.records ?? []);
@@ -74,7 +78,17 @@ function ResultsPage() {
           scale: cls?.grading_scale ?? [],
         }),
       }));
-  }, [students, q, isOwner, myStudentId, assessments, scoresByStudent, stats, cls, attendance?.sessions.length]);
+  }, [
+    students,
+    q,
+    isOwner,
+    myStudentId,
+    assessments,
+    scoresByStudent,
+    stats,
+    cls,
+    attendance?.sessions.length,
+  ]);
 
   async function saveWeights() {
     if (!weightDraft) return;
@@ -96,6 +110,37 @@ function ResultsPage() {
     }
     toast.success("Weights saved — grades recalculated");
     setWeightDraft(null);
+    await queryClient.invalidateQueries({ queryKey: ["class", classId] });
+  }
+
+  async function saveScale() {
+    if (!scaleDraft) return;
+    const scale: { grade: string; min: number }[] = [];
+    for (const row of scaleDraft) {
+      const grade = row.grade.trim();
+      const min = Number(row.min);
+      if (!grade) {
+        toast.error("Every grade needs a name, e.g. A+.");
+        return;
+      }
+      if (!Number.isFinite(min) || min < 0 || min > 100) {
+        toast.error(`"${row.min}" is not a valid percentage (0–100).`);
+        return;
+      }
+      scale.push({ grade, min });
+    }
+    setBusy(true);
+    const { error } = await supabase
+      .from("classes")
+      .update({ grading_scale: scale })
+      .eq("id", classId);
+    setBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Grade scale saved — grades recalculated");
+    setScaleDraft(null);
     await queryClient.invalidateQueries({ queryKey: ["class", classId] });
   }
 
@@ -146,14 +191,77 @@ function ResultsPage() {
               </div>
             ))}
           </div>
-          <p className="border-t border-border px-4 py-2.5 text-[12px] text-mute">
-            Grade scale:{" "}
-            {(cls?.grading_scale ?? [])
-              .slice()
-              .sort((a, b) => b.min - a.min)
-              .map((s) => `${s.grade} ≥ ${s.min}`)
-              .join(" · ")}
-          </p>
+
+          <div className="border-t border-border px-4 py-2.5">
+            {scaleDraft ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {scaleDraft.map((row, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-1.5 rounded-md bg-secondary/50 px-2 py-1.5"
+                    >
+                      <input
+                        value={row.grade}
+                        onChange={(e) =>
+                          setScaleDraft(
+                            scaleDraft.map((r, j) =>
+                              j === i ? { ...r, grade: e.target.value } : r,
+                            ),
+                          )
+                        }
+                        className="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-center text-sm font-medium"
+                      />
+                      <span className="text-[12px] text-mute">≥</span>
+                      <input
+                        value={row.min}
+                        inputMode="numeric"
+                        onChange={(e) =>
+                          setScaleDraft(
+                            scaleDraft.map((r, j) => (j === i ? { ...r, min: e.target.value } : r)),
+                          )
+                        }
+                        className="num w-12 rounded border border-border bg-background px-1.5 py-0.5 text-right text-sm"
+                      />
+                      <span className="text-[12px] text-mute">%</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <LedgerButton variant="solid" disabled={busy} onClick={() => void saveScale()}>
+                    {busy ? "Saving…" : "Save scale"}
+                  </LedgerButton>
+                  <LedgerButton onClick={() => setScaleDraft(null)}>Cancel</LedgerButton>
+                  <span className="text-[12px] text-mute">
+                    Highest percentage wins — keep the lowest grade at 0.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[12px] text-mute">
+                  Grade scale:{" "}
+                  {(cls?.grading_scale ?? [])
+                    .slice()
+                    .sort((a, b) => b.min - a.min)
+                    .map((s) => `${s.grade} ≥ ${s.min}`)
+                    .join(" · ")}
+                </p>
+                <LedgerButton
+                  onClick={() =>
+                    setScaleDraft(
+                      (cls?.grading_scale ?? [])
+                        .slice()
+                        .sort((a, b) => b.min - a.min)
+                        .map((s) => ({ grade: s.grade, min: String(s.min) })),
+                    )
+                  }
+                >
+                  Edit scale
+                </LedgerButton>
+              </div>
+            )}
+          </div>
         </Panel>
       ) : null}
 
@@ -162,7 +270,14 @@ function ResultsPage() {
           title={isOwner ? "Class marksheet" : "Your result"}
           hint={`${rows.length} student${rows.length === 1 ? "" : "s"}`}
           actions={
-            isOwner ? <SearchInput value={q} onChange={setQ} placeholder="Search student" className="w-48" /> : null
+            isOwner ? (
+              <SearchInput
+                value={q}
+                onChange={setQ}
+                placeholder="Search student"
+                className="w-48"
+              />
+            ) : null
           }
         />
         {isLoading ? (
@@ -181,7 +296,9 @@ function ResultsPage() {
             <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/40 text-left">
-                  <th className="label-caps sticky left-0 bg-secondary px-4 py-2 font-normal">Student</th>
+                  <th className="label-caps sticky left-0 bg-secondary px-4 py-2 font-normal">
+                    Student
+                  </th>
                   <th className="label-caps px-3 py-2 font-normal">ID</th>
                   <th className="label-caps px-3 py-2 text-right font-normal">Attend.</th>
                   {(assessments ?? []).map((a) => (
@@ -201,7 +318,9 @@ function ResultsPage() {
                   <tr key={student.id} className="hover:bg-secondary/30">
                     <td className="sticky left-0 bg-card px-4 py-2 font-medium">{student.name}</td>
                     <td className="num px-3 py-2">{student.roll}</td>
-                    <td className="num px-3 py-2 text-right">{fmt(result.attendance.percentage)}%</td>
+                    <td className="num px-3 py-2 text-right">
+                      {fmt(result.attendance.percentage)}%
+                    </td>
                     {(assessments ?? []).map((a) => {
                       const score = scoresByStudent[student.id]?.[a.id];
                       return (
@@ -213,7 +332,9 @@ function ResultsPage() {
                     <td className="num px-3 py-2 text-right">
                       {result.rawTotal} / {result.rawMax}
                     </td>
-                    <td className="num px-3 py-2 text-right font-medium">{fmt(result.percentage)}</td>
+                    <td className="num px-3 py-2 text-right font-medium">
+                      {fmt(result.percentage)}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <GradeBadge grade={result.grade} />
                     </td>

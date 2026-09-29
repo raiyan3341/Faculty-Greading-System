@@ -89,7 +89,7 @@ function AttendancePage() {
     }
     setSessionTitle("");
     setOpenSession(data.id);
-    setDraft(Object.fromEntries((students ?? []).map((s) => [s.id, "present" as Status])));
+    setDraft(Object.fromEntries((students ?? []).map((s) => [s.id, "absent" as Status])));
     await queryClient.invalidateQueries({ queryKey: ["attendance", classId] });
   }
 
@@ -97,7 +97,7 @@ function AttendancePage() {
     setOpenSession(sessionId);
     const existing: Record<string, Status> = {};
     for (const r of records.filter((r) => r.session_id === sessionId)) existing[r.student_id] = r.status;
-    for (const s of students ?? []) existing[s.id] ??= "present";
+    for (const s of students ?? []) existing[s.id] ??= "absent";
     setDraft(existing);
   }
 
@@ -108,7 +108,7 @@ function AttendancePage() {
       class_id: classId,
       session_id: openSession,
       student_id: s.id,
-      status: draft[s.id] ?? "present",
+      status: draft[s.id] ?? "absent",
     }));
     const { error } = await supabase
       .from("attendance_records")
@@ -216,7 +216,7 @@ function AttendancePage() {
                         onClick={() => setDraft((d) => ({ ...d, [s.id]: status }))}
                         className={cn(
                           "rounded-md px-2.5 py-1 text-xs font-medium capitalize ring-1 transition-colors",
-                          (draft[s.id] ?? "present") === status
+                          (draft[s.id] ?? "absent") === status
                             ? "bg-ink text-paper ring-ink"
                             : "bg-card text-inksoft ring-border hover:bg-secondary",
                         )}
