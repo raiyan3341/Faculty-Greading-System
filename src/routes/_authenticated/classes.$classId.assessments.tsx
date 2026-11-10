@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { notifyClass, useAssessments, useClass, type AssessmentRow } from "@/lib/data";
+import { ASSESSMENT_KINDS } from "@/lib/grading";
 import {
   ConfirmButton,
   EmptyState,
@@ -20,15 +21,16 @@ export const Route = createFileRoute("/_authenticated/classes/$classId/assessmen
   head: () => ({
     meta: [
       { title: "Assessments — Registrar" },
-      { name: "description", content: "Class tests, quizzes, presentations, midterm, final and custom assessments." },
+      {
+        name: "description",
+        content: "Class tests, quizzes, presentations, midterm, final and custom assessments.",
+      },
       { property: "og:title", content: "Assessments — Registrar" },
       { property: "og:description", content: "Assessments defined for this class." },
     ],
   }),
   component: AssessmentsPage,
 });
-
-const kinds = ["CT", "Quiz", "Presentation", "Midterm", "Final", "Assignment", "Lab", "Viva", "Project", "Participation"];
 
 function AssessmentsPage() {
   const { classId } = Route.useParams();
@@ -55,6 +57,7 @@ function AssessmentsPage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (!isOwner) return;
     const max = Number(form.max_marks);
     if (!form.name.trim() || !Number.isFinite(max) || max <= 0) {
       toast.error("Give the assessment a name and a maximum mark above zero.");
@@ -95,6 +98,7 @@ function AssessmentsPage() {
   }
 
   async function remove(row: AssessmentRow) {
+    if (!isOwner) return;
     const { error } = await supabase.from("assessments").delete().eq("id", row.id);
     if (error) {
       toast.error(error.message);
@@ -145,7 +149,9 @@ function AssessmentsPage() {
                     </td>
                     <td className="px-3 py-2">
                       <p className="font-medium">{a.name}</p>
-                      {a.description ? <p className="text-[12px] text-mute">{a.description}</p> : null}
+                      {a.description ? (
+                        <p className="text-[12px] text-mute">{a.description}</p>
+                      ) : null}
                     </td>
                     <td className="num px-3 py-2 text-right">{a.max_marks}</td>
                     <td className="num px-3 py-2">{a.assessment_date ?? "—"}</td>
@@ -193,7 +199,7 @@ function AssessmentsPage() {
                 onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}
                 className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
               >
-                {kinds.map((k) => (
+                {ASSESSMENT_KINDS.map((k) => (
                   <option key={k} value={k}>
                     {k}
                   </option>
@@ -212,6 +218,7 @@ function AssessmentsPage() {
               required
               type="number"
               min={1}
+              step="any"
               value={form.max_marks}
               onChange={(e) => setForm((f) => ({ ...f, max_marks: e.target.value }))}
               className="num"

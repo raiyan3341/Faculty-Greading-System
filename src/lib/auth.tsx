@@ -49,23 +49,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const payload = {
       id: userId,
       email: user?.email ?? null,
-      full_name: meta['full_name'] ?? meta['name'] ?? user?.email?.split("@")[0] ?? null,
-      avatar_url: meta['avatar_url'] ?? meta['picture'] ?? null,
+      full_name: meta["full_name"] ?? meta["name"] ?? user?.email?.split("@")[0] ?? null,
+      avatar_url: meta["avatar_url"] ?? meta["picture"] ?? null,
     };
     let active = true;
     supabase
       .from("profiles")
       .upsert(payload, { onConflict: "id" })
-      .then(() =>
-        supabase
+      .then(({ error: upsertErr }) => {
+        if (upsertErr) console.warn("Profile sync warning:", upsertErr.message);
+        return supabase
           .from("profiles")
           .select("id, email, full_name, avatar_url")
           .eq("id", userId)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (active) setProfile((data as Profile) ?? payload);
-          }),
-      );
+          .maybeSingle();
+      })
+      .then(({ data }) => {
+        if (active) setProfile((data as Profile) ?? payload);
+      });
     return () => {
       active = false;
     };
@@ -77,12 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       profile,
       loading,
-      // নতুন কোড (সরাসরি Supabase Auth):
       signInWithGoogle: async () => {
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {
-            redirectTo: window.location.origin,
+            redirectTo: `${window.location.origin}/auth`,
           },
         });
         if (error) return { error: error.message };

@@ -20,6 +20,18 @@ export type GradeStep = { grade: string; min: number };
 export type Weights = Record<string, number>;
 
 export const DEFAULT_KINDS = ["CT", "Quiz", "Presentation", "Midterm", "Final"] as const;
+export const ASSESSMENT_KINDS = [
+  "CT",
+  "Quiz",
+  "Presentation",
+  "Midterm",
+  "Final",
+  "Assignment",
+  "Lab",
+  "Viva",
+  "Project",
+  "Participation",
+] as const;
 
 export type AttendanceStat = {
   total: number;
@@ -74,7 +86,7 @@ export function computeResult(opts: {
   const components: ComponentResult[] = [];
 
   const attWeight = Number(weights["Attendance"] ?? 0);
-  if (attWeight > 0) {
+  if (attWeight > 0 && attendance.total > 0) {
     components.push({
       kind: "Attendance",
       weight: attWeight,
@@ -110,7 +122,7 @@ export function computeResult(opts: {
     rawTotal,
     rawMax,
     percentage,
-    grade: letterGrade(percentage, scale),
+    grade: totalWeight > 0 ? letterGrade(percentage, scale) : "—",
     attendance,
   };
 }

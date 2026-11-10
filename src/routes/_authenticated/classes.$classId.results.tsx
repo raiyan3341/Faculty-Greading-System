@@ -13,7 +13,7 @@ import {
   useMyStudentId,
   useStudents,
 } from "@/lib/data";
-import { computeResult, emptyAttendance, fmt } from "@/lib/grading";
+import { ASSESSMENT_KINDS, computeResult, emptyAttendance, fmt } from "@/lib/grading";
 import {
   EmptyState,
   GradeBadge,
@@ -53,6 +53,7 @@ function ResultsPage() {
 
   const [q, setQ] = useState("");
   const [weightDraft, setWeightDraft] = useState<Record<string, string> | null>(null);
+  const [newCategory, setNewCategory] = useState("");
   const [scaleDraft, setScaleDraft] = useState<{ grade: string; min: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -66,7 +67,6 @@ function ResultsPage() {
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return (students ?? [])
-      .filter((s) => (isOwner ? true : s.id === myStudentId))
       .filter((s) => `${s.name} ${s.roll}`.toLowerCase().includes(needle))
       .map((s) => ({
         student: s,
@@ -78,20 +78,27 @@ function ResultsPage() {
           scale: cls?.grading_scale ?? [],
         }),
       }));
-  }, [
-    students,
-    q,
-    isOwner,
-    myStudentId,
-    assessments,
-    scoresByStudent,
-    stats,
-    cls,
-    attendance?.sessions.length,
-  ]);
+  }, [students, q, assessments, scoresByStudent, stats, cls, attendance?.sessions.length]);
+
+  const myRow = useMemo(
+    () => (!isOwner && myStudentId ? rows.find((r) => r.student.id === myStudentId) : undefined),
+    [isOwner, myStudentId, rows],
+  );
+
+  function startEditWeights() {
+    const base: Record<string, string> = Object.fromEntries(
+      Object.entries(cls?.weights ?? {}).map(([k, v]) => [k, String(v)]),
+    );
+    base["Attendance"] ??= "0";
+    for (const a of assessments ?? []) {
+      base[a.kind] ??= "0";
+    }
+    setWeightDraft(base);
+    setNewCategory("");
+  }
 
   async function saveWeights() {
-    if (!weightDraft) return;
+    if (!isOwner || !weightDraft) return;
     const weights: Record<string, number> = {};
     for (const [kind, value] of Object.entries(weightDraft)) {
       const n = Number(value);
@@ -114,7 +121,7 @@ function ResultsPage() {
   }
 
   async function saveScale() {
-    if (!scaleDraft) return;
+    if (!isOwner || !scaleDraft) return;
     const scale: { grade: string; min: number }[] = [];
     for (const row of scaleDraft) {
       const grade = row.grade.trim();
@@ -145,15 +152,27 @@ function ResultsPage() {
   }
 
   const weightEntries = Object.entries(cls?.weights ?? {});
+  const weightValues: (string | number)[] = weightDraft
+    ? Object.values(weightDraft)
+    : weightEntries.map(([, v]) => v);
+  const totalWeight = weightValues.reduce<number>(
+    (sum, v) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0),
+    0,
+  );
+  const addableKinds = weightDraft
+    ? ["Attendance", ...ASSESSMENT_KINDS, ...(assessments ?? []).map((a) => a.kind)].filter(
+        (k, i, arr) => arr.indexOf(k) === i && !(k in weightDraft),
+      )
+    : [];
 
   return (
     <div className="space-y-4">
-      {isOwner ? (
-        <Panel>
-          <PanelHeader
-            title="Grading weights"
-            hint="Weighted marks → total → percentage → letter grade"
-            actions={
+      <Panel>
+        <PanelHeader
+          title="Grading weights"
+          hint={`Total: ${totalWeight}%${!isOwner ? " · Read only" : " · Weighted marks → total → percentage → letter grade"}`}
+          actions={
+            isOwner ? (
               weightDraft ? (
                 <>
                   <LedgerButton variant="solid" disabled={busy} onClick={() => void saveWeights()}>
@@ -162,91 +181,142 @@ function ResultsPage() {
                   <LedgerButton onClick={() => setWeightDraft(null)}>Cancel</LedgerButton>
                 </>
               ) : (
-                <LedgerButton
-                  onClick={() =>
-                    setWeightDraft(
-                      Object.fromEntries(weightEntries.map(([k, v]) => [k, String(v)])),
-                    )
-                  }
-                >
-                  Edit weights
-                </LedgerButton>
+                <LedgerButton onClick={startEditWeights}>Edit weights</LedgerButton>
               )
-            }
-          />
-          <div className="flex flex-wrap gap-3 p-4">
-            {(weightDraft ? Object.entries(weightDraft) : weightEntries).map(([kind, value]) => (
-              <div key={kind} className="rounded-md bg-secondary/50 px-3 py-2">
+            ) : null
+          }
+        />
+        <div className="flex flex-wrap items-end gap-3 p-4">
+          {(weightDraft ? Object.entries(weightDraft) : weightEntries).map(([kind, value]) => (
+            <div key={kind} className="rounded-md bg-secondary/50 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
                 <p className="label-caps">{kind}</p>
-                {weightDraft ? (
-                  <input
-                    value={String(value)}
-                    inputMode="decimal"
-                    onChange={(e) => setWeightDraft({ ...weightDraft, [kind]: e.target.value })}
-                    className="num mt-1 w-16 rounded border border-border bg-background px-2 py-1 text-right text-sm"
-                  />
-                ) : (
-                  <p className="num mt-0.5 text-lg">{String(value)}%</p>
-                )}
+                {weightDraft && Object.keys(weightDraft).length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = { ...weightDraft };
+                      delete next[kind];
+                      setWeightDraft(next);
+                    }}
+                    className="text-[11px] text-mute hover:text-destructive"
+                    aria-label={`Remove ${kind}`}
+                  >
+                    ×
+                  </button>
+                ) : null}
               </div>
-            ))}
-          </div>
+              {weightDraft ? (
+                <input
+                  value={String(value)}
+                  inputMode="decimal"
+                  onChange={(e) => setWeightDraft({ ...weightDraft, [kind]: e.target.value })}
+                  className="num mt-1 w-16 rounded border border-border bg-background px-2 py-1 text-right text-sm"
+                />
+              ) : (
+                <p className="num mt-0.5 text-lg">{String(value)}%</p>
+              )}
+            </div>
+          ))}
+          {weightDraft && addableKinds.length > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
+              >
+                <option value="">Add category…</option>
+                {addableKinds.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+              <LedgerButton
+                type="button"
+                disabled={!newCategory}
+                onClick={() => {
+                  if (!newCategory || !weightDraft) return;
+                  setWeightDraft({ ...weightDraft, [newCategory]: "0" });
+                  setNewCategory("");
+                }}
+              >
+                Add
+              </LedgerButton>
+            </div>
+          ) : null}
+        </div>
 
-          <div className="border-t border-border px-4 py-2.5">
-            {scaleDraft ? (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  {scaleDraft.map((row, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-1.5 rounded-md bg-secondary/50 px-2 py-1.5"
-                    >
-                      <input
-                        value={row.grade}
-                        onChange={(e) =>
-                          setScaleDraft(
-                            scaleDraft.map((r, j) =>
-                              j === i ? { ...r, grade: e.target.value } : r,
-                            ),
-                          )
-                        }
-                        className="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-center text-sm font-medium"
-                      />
-                      <span className="text-[12px] text-mute">≥</span>
-                      <input
-                        value={row.min}
-                        inputMode="numeric"
-                        onChange={(e) =>
-                          setScaleDraft(
-                            scaleDraft.map((r, j) => (j === i ? { ...r, min: e.target.value } : r)),
-                          )
-                        }
-                        className="num w-12 rounded border border-border bg-background px-1.5 py-0.5 text-right text-sm"
-                      />
-                      <span className="text-[12px] text-mute">%</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <LedgerButton variant="solid" disabled={busy} onClick={() => void saveScale()}>
-                    {busy ? "Saving…" : "Save scale"}
-                  </LedgerButton>
-                  <LedgerButton onClick={() => setScaleDraft(null)}>Cancel</LedgerButton>
-                  <span className="text-[12px] text-mute">
-                    Highest percentage wins — keep the lowest grade at 0.
-                  </span>
-                </div>
+        <div className="border-t border-border px-4 py-2.5">
+          {isOwner && scaleDraft ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {scaleDraft.map((row, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 rounded-md bg-secondary/50 px-2 py-1.5"
+                  >
+                    <input
+                      value={row.grade}
+                      onChange={(e) =>
+                        setScaleDraft(
+                          scaleDraft.map((r, j) => (j === i ? { ...r, grade: e.target.value } : r)),
+                        )
+                      }
+                      className="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-center text-sm font-medium"
+                    />
+                    <span className="text-[12px] text-mute">≥</span>
+                    <input
+                      value={row.min}
+                      inputMode="numeric"
+                      onChange={(e) =>
+                        setScaleDraft(
+                          scaleDraft.map((r, j) => (j === i ? { ...r, min: e.target.value } : r)),
+                        )
+                      }
+                      className="num w-12 rounded border border-border bg-background px-1.5 py-0.5 text-right text-sm"
+                    />
+                    <span className="text-[12px] text-mute">%</span>
+                    {scaleDraft.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => setScaleDraft(scaleDraft.filter((_, j) => j !== i))}
+                        className="ml-0.5 text-[11px] text-mute hover:text-destructive"
+                        aria-label={`Remove ${row.grade}`}
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+                <LedgerButton
+                  type="button"
+                  onClick={() => setScaleDraft([...scaleDraft, { grade: "", min: "0" }])}
+                >
+                  + Add grade
+                </LedgerButton>
               </div>
-            ) : (
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[12px] text-mute">
-                  Grade scale:{" "}
-                  {(cls?.grading_scale ?? [])
-                    .slice()
-                    .sort((a, b) => b.min - a.min)
-                    .map((s) => `${s.grade} ≥ ${s.min}`)
-                    .join(" · ")}
-                </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <LedgerButton variant="solid" disabled={busy} onClick={() => void saveScale()}>
+                  {busy ? "Saving…" : "Save scale"}
+                </LedgerButton>
+                <LedgerButton onClick={() => setScaleDraft(null)}>Cancel</LedgerButton>
+                <span className="text-[12px] text-mute">
+                  Highest percentage wins — keep the lowest grade at 0.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-[12px] text-mute">
+                Grade scale:{" "}
+                {(cls?.grading_scale ?? [])
+                  .slice()
+                  .sort((a, b) => b.min - a.min)
+                  .map((s) => `${s.grade} ≥ ${s.min}`)
+                  .join(" · ")}
+              </p>
+              {isOwner ? (
                 <LedgerButton
                   onClick={() =>
                     setScaleDraft(
@@ -259,25 +329,18 @@ function ResultsPage() {
                 >
                   Edit scale
                 </LedgerButton>
-              </div>
-            )}
-          </div>
-        </Panel>
-      ) : null}
+              ) : null}
+            </div>
+          )}
+        </div>
+      </Panel>
 
       <Panel>
         <PanelHeader
-          title={isOwner ? "Class marksheet" : "Your result"}
-          hint={`${rows.length} student${rows.length === 1 ? "" : "s"}`}
+          title="Class marksheet"
+          hint={`${rows.length} student${rows.length === 1 ? "" : "s"}${!isOwner ? " · Read only" : ""}`}
           actions={
-            isOwner ? (
-              <SearchInput
-                value={q}
-                onChange={setQ}
-                placeholder="Search student"
-                className="w-48"
-              />
-            ) : null
+            <SearchInput value={q} onChange={setQ} placeholder="Search student" className="w-48" />
           }
         />
         {isLoading ? (
@@ -288,7 +351,7 @@ function ResultsPage() {
             description={
               isOwner
                 ? "Add students, assessments and marks to see the full marksheet."
-                : "Your faculty hasn't published marks for you in this class yet."
+                : "Your faculty hasn't added students or published marks for this class yet."
             }
           />
         ) : (
@@ -316,7 +379,16 @@ function ResultsPage() {
               <tbody className="divide-y divide-border">
                 {rows.map(({ student, result }) => (
                   <tr key={student.id} className="hover:bg-secondary/30">
-                    <td className="sticky left-0 bg-card px-4 py-2 font-medium">{student.name}</td>
+                    <td className="sticky left-0 bg-card px-4 py-2 font-medium">
+                      <span className="inline-flex items-center gap-2">
+                        {student.name}
+                        {!isOwner && student.id === myStudentId ? (
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-inksoft">
+                            You
+                          </span>
+                        ) : null}
+                      </span>
+                    </td>
                     <td className="num px-3 py-2">{student.roll}</td>
                     <td className="num px-3 py-2 text-right">
                       {fmt(result.attendance.percentage)}%
@@ -346,7 +418,7 @@ function ResultsPage() {
         )}
       </Panel>
 
-      {!isOwner && rows[0] ? (
+      {myRow ? (
         <Panel>
           <PanelHeader title="How your grade was calculated" />
           <div className="overflow-x-auto">
@@ -360,7 +432,7 @@ function ResultsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {rows[0].result.components.map((c) => (
+                {myRow.result.components.map((c) => (
                   <tr key={c.kind}>
                     <td className="px-4 py-2">{c.kind}</td>
                     <td className="num px-3 py-2 text-right">

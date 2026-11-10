@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const schema = z.object({
   dataUrl: z.string().min(32),
@@ -9,21 +10,18 @@ const schema = z.object({
 export type ScannedStudent = { name: string; roll: string };
 
 export const scanStudentList = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .validator((data: unknown) => schema.parse(data))
   .handler(async ({ data }) => {
-    const apiKey = process.env['GEMINI_API_KEY'];
+    const apiKey = process.env["GEMINI_API_KEY"];
     if (!apiKey) throw new Error("Scanning is not configured. Please add GEMINI_API_KEY in .env");
 
-    // dataUrl থেকে শুধু base64 অংশ আলাদা করা
-    const base64Data = data.dataUrl.includes(",") 
-      ? data.dataUrl.split(",")[1] 
-      : data.dataUrl;
+    const base64Data = data.dataUrl.includes(",") ? data.dataUrl.split(",")[1] : data.dataUrl;
+    if (!base64Data) throw new Error("Could not read file contents.");
 
-    // Google Gemini 1.5 Flash-এর সরাসরি নেটিভ এন্ডপয়েন্ট
+    // Google Gemini Flash endpoint
     const response = await fetch(
-      // পরিবর্তন করে এটি লিখুন:
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: {
@@ -49,18 +47,25 @@ export const scanStudentList = createServerFn({ method: "POST" })
             response_mime_type: "application/json",
           },
         }),
-      }
+      },
     );
 
     if (!response.ok) {
       const detail = await response.text();
-      if (response.status === 429) throw new Error("Scanning is rate limited right now. Try again shortly.");
+      if (response.status === 429)
+        throw new Error("Scanning is rate limited right now. Try again shortly.");
       throw new Error(`Scanning failed (${response.status}). ${detail.slice(0, 200)}`);
     }
 
     const payload = (await response.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      candidates?: { finishReason?: string; content?: { parts?: { text?: string }[] } }[];
+      promptFeedback?: { blockReason?: string };
     };
+    if (payload.promptFeedback?.blockReason) {
+      throw new Error(
+        `Scanning was blocked (${payload.promptFeedback.blockReason}). Try a clearer image.`,
+      );
+    }
     const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return { students: [] as ScannedStudent[] };

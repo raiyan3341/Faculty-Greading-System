@@ -8,9 +8,15 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign in — Registrar" },
-      { name: "description", content: "Sign in with Google to manage your university classes in Registrar." },
+      {
+        name: "description",
+        content: "Sign in with Google to manage your university classes in Registrar.",
+      },
       { property: "og:title", content: "Sign in — Registrar" },
-      { property: "og:description", content: "Sign in with Google to manage your university classes." },
+      {
+        property: "og:description",
+        content: "Sign in with Google to manage your university classes.",
+      },
     ],
   }),
   component: AuthPage,
@@ -37,11 +43,21 @@ function AuthPage() {
     if (!loading && session) void navigate({ to: "/dashboard", replace: true });
   }, [loading, session, navigate]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const msg = search.get("error_description") ?? hash.get("error_description");
+    if (msg) setError(msg);
+  }, []);
+
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-ink p-10 text-paper lg:flex">
         <Link to="/" className="flex items-center gap-2.5">
-          <div className="grid size-8 place-items-center rounded-md bg-paper text-sm font-semibold text-ink">R</div>
+          <div className="grid size-8 place-items-center rounded-md bg-paper text-sm font-semibold text-ink">
+            R
+          </div>
           <span className="text-[15px] font-semibold tracking-tight">Registrar</span>
         </Link>
         <div>
@@ -94,7 +110,9 @@ function AuthPage() {
           </LedgerButton>
 
           {error ? (
-            <p className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+            <p className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
           ) : null}
 
           <p className="mt-6 text-[11px] text-mute">

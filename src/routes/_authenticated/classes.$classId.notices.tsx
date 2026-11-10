@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -41,24 +41,31 @@ function NoticesPage() {
   const [body, setBody] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function resetForm() {
     setEditingId(null);
     setTitle("");
     setBody("");
     setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (!isOwner) return;
     if (!title.trim()) {
       toast.error("A notice needs a title.");
+      return;
+    }
+    if (file && file.size > 25 * 1024 * 1024) {
+      toast.error("Attachment must be under 25 MB.");
       return;
     }
     setBusy(true);
     let attachmentPath: string | null = null;
     if (file) {
-      const path = `${classId}/notices/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
+      const path = `${classId}/notices/${Date.now()}-${file.name.replace(/[^\w.-]+/g, "_")}`;
       const { error } = await supabase.storage.from("class-resources").upload(path, file);
       if (error) {
         setBusy(false);
@@ -69,6 +76,7 @@ function NoticesPage() {
     }
 
     if (editingId) {
+      const previousPath = (notices ?? []).find((n) => n.id === editingId)?.attachment_path ?? null;
       const { error } = await supabase
         .from("notices")
         .update(
@@ -79,8 +87,12 @@ function NoticesPage() {
         .eq("id", editingId);
       setBusy(false);
       if (error) {
+        if (attachmentPath) await supabase.storage.from("class-resources").remove([attachmentPath]);
         toast.error(error.message);
         return;
+      }
+      if (attachmentPath && previousPath && previousPath !== attachmentPath) {
+        await supabase.storage.from("class-resources").remove([previousPath]);
       }
       toast.success("Notice updated");
     } else {
@@ -93,6 +105,7 @@ function NoticesPage() {
       });
       setBusy(false);
       if (error) {
+        if (attachmentPath) await supabase.storage.from("class-resources").remove([attachmentPath]);
         toast.error(error.message);
         return;
       }
@@ -109,18 +122,24 @@ function NoticesPage() {
     await queryClient.invalidateQueries({ queryKey: ["notices", classId] });
   }
 
-  async function remove(id: string) {
+  async function remove(id: string, attachmentPath: string | null) {
+    if (!isOwner) return;
     const { error } = await supabase.from("notices").delete().eq("id", id);
     if (error) {
       toast.error(error.message);
       return;
+    }
+    if (attachmentPath) {
+      await supabase.storage.from("class-resources").remove([attachmentPath]);
     }
     toast.success("Notice deleted");
     await queryClient.invalidateQueries({ queryKey: ["notices", classId] });
   }
 
   async function openAttachment(path: string) {
-    const { data, error } = await supabase.storage.from("class-resources").createSignedUrl(path, 120);
+    const { data, error } = await supabase.storage
+      .from("class-resources")
+      .createSignedUrl(path, 120);
     if (error || !data) {
       toast.error("Could not open the attachment.");
       return;
@@ -158,6 +177,7 @@ function NoticesPage() {
                       </span>
                       {n.attachment_path ? (
                         <button
+                          type="button"
                           onClick={() => void openAttachment(n.attachment_path!)}
                           className="text-[12px] text-oxblood hover:underline"
                         >
@@ -174,6 +194,7 @@ function NoticesPage() {
                           setTitle(n.title);
                           setBody(n.body ?? "");
                           setFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
                         }}
                       >
                         Edit
@@ -181,7 +202,7 @@ function NoticesPage() {
                       <ConfirmButton
                         label="Delete"
                         message={`Delete the notice "${n.title}"?`}
-                        onConfirm={() => void remove(n.id)}
+                        onConfirm={() => void remove(n.id, n.attachment_path)}
                       />
                     </div>
                   ) : null}
@@ -196,11 +217,22 @@ function NoticesPage() {
         <Panel className="h-fit">
           <PanelHeader title={editingId ? "Edit notice" : "New notice"} />
           <form onSubmit={save} className="space-y-4 p-4">
-            <TextField label="Title" required value={title} onChange={(e) => setTitle(e.target.value)} />
-            <TextArea label="Description" rows={5} value={body} onChange={(e) => setBody(e.target.value)} />
+            <TextField
+              label="Title"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <TextArea
+              label="Description"
+              rows={5}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
             <label className="block">
               <span className="label-caps block">Attachment (optional)</span>
               <input
+                ref={fileInputRef}
                 type="file"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-secondary file:px-2 file:py-1 file:text-[12px]"

@@ -35,18 +35,27 @@ export function useMyClasses(userId: string | undefined) {
     enabled: !!userId,
     queryFn: async () => {
       const [owned, memberships] = await Promise.all([
-        supabase.from("classes").select("*").eq("owner_id", userId!).order("created_at", { ascending: false }),
-        supabase.from("class_members").select("class_id, joined_at, classes(*)").eq("user_id", userId!),
+        supabase
+          .from("classes")
+          .select("*")
+          .eq("owner_id", userId!)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("class_members")
+          .select("class_id, joined_at, classes(*)")
+          .eq("user_id", userId!),
       ]);
       if (owned.error) throw owned.error;
       if (memberships.error) throw memberships.error;
 
       const ownedRows = (owned.data ?? []) as unknown as ClassRow[];
-      const joinedRows = ((memberships.data ?? []) as unknown as {
-        class_id: string;
-        joined_at: string;
-        classes: ClassRow | null;
-      }[])
+      const joinedRows = (
+        (memberships.data ?? []) as unknown as {
+          class_id: string;
+          joined_at: string;
+          classes: ClassRow | null;
+        }[]
+      )
         .map((m) => m.classes)
         .filter((c): c is ClassRow => !!c && c.owner_id !== userId);
 
@@ -60,7 +69,11 @@ export function useClass(classId: string | undefined) {
     queryKey: ["class", classId],
     enabled: !!classId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("classes").select("*").eq("id", classId!).maybeSingle();
+      const { data, error } = await supabase
+        .from("classes")
+        .select("*")
+        .eq("id", classId!)
+        .maybeSingle();
       if (error) throw error;
       return (data as unknown as ClassRow) ?? null;
     },
@@ -73,7 +86,10 @@ export function useClassStudentCount(classIds: string[]) {
     queryKey: ["student-counts", key],
     enabled: classIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase.from("students").select("id, class_id").in("class_id", classIds);
+      const { data, error } = await supabase
+        .from("students")
+        .select("id, class_id")
+        .in("class_id", classIds);
       if (error) throw error;
       const counts: Record<string, number> = {};
       for (const row of (data ?? []) as { id: string; class_id: string }[]) {
@@ -108,18 +124,15 @@ export async function notifyClass(opts: {
   title: string;
   body?: string;
 }) {
-  const { data } = await supabase.from("class_members").select("user_id").eq("class_id", opts.classId);
-  const rows = ((data ?? []) as { user_id: string }[])
-    .map((r) => r.user_id)
-    .filter((id) => id !== opts.actorId)
-    .map((user_id) => ({
-      user_id,
-      class_id: opts.classId,
-      kind: opts.kind,
-      title: opts.title,
-      body: opts.body ?? null,
-    }));
-  if (rows.length) await supabase.from("notifications").insert(rows);
+  const { error } = await supabase.rpc("notify_class_members", {
+    _class: opts.classId,
+    _kind: opts.kind,
+    _title: opts.title,
+    _body: opts.body ?? null,
+  });
+  if (error) {
+    console.warn("Could not notify class members:", error.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -329,15 +342,22 @@ export function useMyStudentId(classId: string | undefined, enabled = true) {
   });
 }
 
-export function useOwnerName(ownerId: string | undefined) {
+export function useOwnerName(ownerId: string | undefined, classId?: string) {
   return useQuery({
-    queryKey: ["owner-name", ownerId],
-    enabled: !!ownerId,
+    queryKey: ["owner-name", classId ?? ownerId],
+    enabled: !!(classId || ownerId),
     queryFn: async () => {
+      if (classId) {
+        const { data: rpcName, error: rpcErr } = await supabase.rpc("get_class_faculty_name", {
+          _class: classId,
+        });
+        if (!rpcErr && rpcName) return rpcName;
+      }
+      if (!ownerId) return null;
       const { data } = await supabase
         .from("profiles")
         .select("full_name, email")
-        .eq("id", ownerId!)
+        .eq("id", ownerId)
         .maybeSingle();
       const row = data as { full_name: string | null; email: string | null } | null;
       return row?.full_name ?? row?.email ?? null;
@@ -348,7 +368,10 @@ export function useOwnerName(ownerId: string | undefined) {
 export function attendanceByStudent(
   sessions: SessionRow[],
   records: AttendanceRecordRow[],
-): Record<string, { total: number; present: number; late: number; absent: number; percentage: number }> {
+): Record<
+  string,
+  { total: number; present: number; late: number; absent: number; percentage: number }
+> {
   const total = sessions.length;
   const out: Record<
     string,

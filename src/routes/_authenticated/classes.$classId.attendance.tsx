@@ -32,9 +32,15 @@ export const Route = createFileRoute("/_authenticated/classes/$classId/attendanc
   head: () => ({
     meta: [
       { title: "Attendance — Registrar" },
-      { name: "description", content: "Attendance sessions, present / late / absent records and percentages." },
+      {
+        name: "description",
+        content: "Attendance sessions, present / late / absent records and percentages.",
+      },
       { property: "og:title", content: "Attendance — Registrar" },
-      { property: "og:description", content: "Attendance sessions and percentages for this class." },
+      {
+        property: "og:description",
+        content: "Attendance sessions and percentages for this class.",
+      },
     ],
   }),
   component: AttendancePage,
@@ -65,13 +71,12 @@ function AttendancePage() {
 
   const visibleStudents = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (students ?? [])
-      .filter((s) => (isOwner ? true : s.id === myStudentId))
-      .filter((s) => `${s.name} ${s.roll}`.toLowerCase().includes(needle));
-  }, [students, q, isOwner, myStudentId]);
+    return (students ?? []).filter((s) => `${s.name} ${s.roll}`.toLowerCase().includes(needle));
+  }, [students, q]);
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault();
+    if (!isOwner) return;
     if (!sessionDate) {
       toast.error("Pick a date for the session.");
       return;
@@ -94,15 +99,17 @@ function AttendancePage() {
   }
 
   function loadSession(sessionId: string) {
+    if (!isOwner) return;
     setOpenSession(sessionId);
     const existing: Record<string, Status> = {};
-    for (const r of records.filter((r) => r.session_id === sessionId)) existing[r.student_id] = r.status;
+    for (const r of records.filter((r) => r.session_id === sessionId))
+      existing[r.student_id] = r.status;
     for (const s of students ?? []) existing[s.id] ??= "absent";
     setDraft(existing);
   }
 
   async function saveSession() {
-    if (!openSession) return;
+    if (!isOwner || !openSession) return;
     setBusy(true);
     const rows = (students ?? []).map((s) => ({
       class_id: classId,
@@ -133,6 +140,7 @@ function AttendancePage() {
   }
 
   async function deleteSession(id: string) {
+    if (!isOwner) return;
     const { error } = await supabase.from("attendance_sessions").delete().eq("id", id);
     if (error) {
       toast.error(error.message);
@@ -143,7 +151,15 @@ function AttendancePage() {
     await queryClient.invalidateQueries({ queryKey: ["attendance", classId] });
   }
 
-  const exportColumns = ["Student", "ID / Roll", "Total classes", "Present", "Late", "Absent", "Percentage"];
+  const exportColumns = [
+    "Student",
+    "ID / Roll",
+    "Total classes",
+    "Present",
+    "Late",
+    "Absent",
+    "Percentage",
+  ];
   const exportRows = visibleStudents.map((s) => {
     const st = stats[s.id];
     return [
@@ -200,11 +216,17 @@ function AttendancePage() {
             }
           />
           {(students ?? []).length === 0 ? (
-            <EmptyState title="No students yet" description="Add students before taking attendance." />
+            <EmptyState
+              title="No students yet"
+              description="Add students before taking attendance."
+            />
           ) : (
             <ul className="divide-y divide-border">
               {(students ?? []).map((s) => (
-                <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                <li
+                  key={s.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5"
+                >
                   <div>
                     <p className="text-sm font-medium">{s.name}</p>
                     <p className="num text-[11px] text-mute">{s.roll}</p>
@@ -213,6 +235,7 @@ function AttendancePage() {
                     {(["present", "late", "absent"] as Status[]).map((status) => (
                       <button
                         key={status}
+                        type="button"
                         onClick={() => setDraft((d) => ({ ...d, [s.id]: status }))}
                         className={cn(
                           "rounded-md px-2.5 py-1 text-xs font-medium capitalize ring-1 transition-colors",
@@ -235,13 +258,22 @@ function AttendancePage() {
       <Panel>
         <PanelHeader
           title="Attendance analysis"
-          hint={isOwner ? `${sessions.length} sessions` : "Your record in this class"}
+          hint={isOwner ? `${sessions.length} sessions` : `${sessions.length} sessions · Read only`}
           actions={
             <>
-              <SearchInput value={q} onChange={setQ} placeholder="Search student" className="w-48" />
+              <SearchInput
+                value={q}
+                onChange={setQ}
+                placeholder="Search student"
+                className="w-48"
+              />
               <LedgerButton
                 onClick={() =>
-                  downloadCsv(`attendance-${cls?.subject ?? "class"}.csv`, exportColumns, exportRows)
+                  downloadCsv(
+                    `attendance-${cls?.subject ?? "class"}.csv`,
+                    exportColumns,
+                    exportRows,
+                  )
                 }
               >
                 CSV
@@ -271,7 +303,10 @@ function AttendancePage() {
         {isLoading ? (
           <Loading />
         ) : visibleStudents.length === 0 ? (
-          <EmptyState title="Nothing to show" description="No attendance records for this class yet." />
+          <EmptyState
+            title="Nothing to show"
+            description="No attendance records for this class yet."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
@@ -290,10 +325,20 @@ function AttendancePage() {
                 {visibleStudents.map((s) => {
                   const st = stats[s.id];
                   const absent =
-                    st?.absent ?? Math.max(0, sessions.length - (st?.present ?? 0) - (st?.late ?? 0));
+                    st?.absent ??
+                    Math.max(0, sessions.length - (st?.present ?? 0) - (st?.late ?? 0));
                   return (
                     <tr key={s.id} className="hover:bg-secondary/30">
-                      <td className="px-4 py-2 font-medium">{s.name}</td>
+                      <td className="px-4 py-2 font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          {s.name}
+                          {!isOwner && s.id === myStudentId ? (
+                            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-inksoft">
+                              You
+                            </span>
+                          ) : null}
+                        </span>
+                      </td>
                       <td className="num px-3 py-2">{s.roll}</td>
                       <td className="num px-3 py-2 text-right">{sessions.length}</td>
                       <td className="num px-3 py-2 text-right">{st?.present ?? 0}</td>
@@ -319,13 +364,19 @@ function AttendancePage() {
       <Panel>
         <PanelHeader title="Sessions" hint={`${sessions.length} recorded`} />
         {sessions.length === 0 ? (
-          <EmptyState title="No sessions yet" description="Attendance sessions you create appear here." />
+          <EmptyState
+            title="No sessions yet"
+            description="Attendance sessions you create appear here."
+          />
         ) : (
           <ul className="divide-y divide-border">
             {sessions.map((s) => {
               const marked = records.filter((r) => r.session_id === s.id);
               return (
-                <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                <li
+                  key={s.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5"
+                >
                   <div>
                     <p className="num text-sm font-medium">{s.session_date}</p>
                     <p className="text-[11px] text-mute">

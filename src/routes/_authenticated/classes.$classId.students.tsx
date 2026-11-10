@@ -10,6 +10,7 @@ import {
   useAttendance,
   useClass,
   useMarks,
+  useMyStudentId,
   useStudents,
   type StudentRow,
 } from "@/lib/data";
@@ -32,9 +33,15 @@ export const Route = createFileRoute("/_authenticated/classes/$classId/students"
   head: () => ({
     meta: [
       { title: "Class students — Registrar" },
-      { name: "description", content: "The roster of this class with attendance, marks and grades." },
+      {
+        name: "description",
+        content: "The roster of this class with attendance, marks and grades.",
+      },
       { property: "og:title", content: "Class students — Registrar" },
-      { property: "og:description", content: "The roster of this class with attendance and grades." },
+      {
+        property: "og:description",
+        content: "The roster of this class with attendance and grades.",
+      },
     ],
   }),
   component: StudentsPage,
@@ -52,6 +59,7 @@ function StudentsPage() {
   const { data: attendance } = useAttendance(classId);
   const queryClient = useQueryClient();
   const isOwner = cls?.owner_id === user?.id;
+  const { data: myStudentId } = useMyStudentId(classId, !isOwner);
 
   const [q, setQ] = useState("");
   const [form, setForm] = useState({ name: "", roll: "", email: "" });
@@ -88,6 +96,7 @@ function StudentsPage() {
 
   async function saveStudent(e: React.FormEvent) {
     e.preventDefault();
+    if (!isOwner) return;
     if (!form.name.trim() || !form.roll.trim()) {
       toast.error("Name and ID / roll are both required.");
       return;
@@ -117,6 +126,7 @@ function StudentsPage() {
   }
 
   async function removeStudent(id: string) {
+    if (!isOwner) return;
     const { error } = await supabase.from("students").delete().eq("id", id);
     if (error) {
       toast.error(error.message);
@@ -127,6 +137,7 @@ function StudentsPage() {
   }
 
   async function onScanFile(file: File) {
+    if (!isOwner) return;
     if (file.size > 8 * 1024 * 1024) {
       toast.error("Please use a file under 8 MB.");
       return;
@@ -139,7 +150,9 @@ function StudentsPage() {
         reader.onerror = () => reject(new Error("Could not read the file"));
         reader.readAsDataURL(file);
       });
-      const result = await scanStudentList({ data: { dataUrl, mimeType: file.type || "image/jpeg" } });
+      const mimeType =
+        file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+      const result = await scanStudentList({ data: { dataUrl, mimeType } });
       const found = (result.students as ScannedStudent[]) ?? [];
       if (!found.length) {
         toast.error("No student rows were found. Try a sharper, straighter photo.");
@@ -155,7 +168,7 @@ function StudentsPage() {
   }
 
   async function importDraft() {
-    if (!draft) return;
+    if (!isOwner || !draft) return;
     const clean = draft
       .map((r) => ({ name: r.name.trim(), roll: r.roll.trim() }))
       .filter((r) => r.name && r.roll);
@@ -166,12 +179,10 @@ function StudentsPage() {
     const seen = new Set<string>();
     const unique = clean.filter((r) => (seen.has(r.roll) ? false : (seen.add(r.roll), true)));
     setBusy(true);
-    const { error } = await supabase
-      .from("students")
-      .upsert(
-        unique.map((r) => ({ class_id: classId, name: r.name, roll: r.roll })),
-        { onConflict: "class_id,roll" },
-      );
+    const { error } = await supabase.from("students").upsert(
+      unique.map((r) => ({ class_id: classId, name: r.name, roll: r.roll })),
+      { onConflict: "class_id,roll" },
+    );
     setBusy(false);
     if (error) {
       toast.error(error.message);
@@ -187,8 +198,15 @@ function StudentsPage() {
       <Panel>
         <PanelHeader
           title="Students"
-          hint={`${rows.length} of ${students?.length ?? 0}`}
-          actions={<SearchInput value={q} onChange={setQ} placeholder="Search name or ID" className="w-56" />}
+          hint={`${rows.length} of ${students?.length ?? 0}${!isOwner ? " · Read only" : ""}`}
+          actions={
+            <SearchInput
+              value={q}
+              onChange={setQ}
+              placeholder="Search name or ID"
+              className="w-56"
+            />
+          }
         />
         {isLoading ? (
           <Loading />
@@ -219,7 +237,16 @@ function StudentsPage() {
               <tbody className="divide-y divide-border">
                 {rows.map(({ student, result }) => (
                   <tr key={student.id} className="hover:bg-secondary/30">
-                    <td className="px-4 py-2 font-medium">{student.name}</td>
+                    <td className="px-4 py-2 font-medium">
+                      <span className="inline-flex items-center gap-2">
+                        {student.name}
+                        {!isOwner && student.id === myStudentId ? (
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-inksoft">
+                            You
+                          </span>
+                        ) : null}
+                      </span>
+                    </td>
                     <td className="num px-3 py-2">{student.roll}</td>
                     <td className="px-3 py-2 text-[13px] text-mute">{student.email ?? "—"}</td>
                     <td className="px-3 py-2">
@@ -371,7 +398,9 @@ function StudentsPage() {
                       <input
                         value={row.name}
                         onChange={(e) =>
-                          setDraft(draft.map((r, i) => (i === index ? { ...r, name: e.target.value } : r)))
+                          setDraft(
+                            draft.map((r, i) => (i === index ? { ...r, name: e.target.value } : r)),
+                          )
                         }
                         className="w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                       />
@@ -380,7 +409,9 @@ function StudentsPage() {
                       <input
                         value={row.roll}
                         onChange={(e) =>
-                          setDraft(draft.map((r, i) => (i === index ? { ...r, roll: e.target.value } : r)))
+                          setDraft(
+                            draft.map((r, i) => (i === index ? { ...r, roll: e.target.value } : r)),
+                          )
                         }
                         className="num w-full rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                       />

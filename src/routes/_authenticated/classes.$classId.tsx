@@ -24,7 +24,7 @@ function ClassLayout() {
   const { classId } = Route.useParams();
   const { user } = useAuth();
   const { data: cls, isLoading } = useClass(classId);
-  const { data: facultyName } = useOwnerName(cls?.owner_id);
+  const { data: facultyName } = useOwnerName(cls?.owner_id, classId);
   const { data: students } = useStudents(classId);
   const isOwner = !!cls && cls.owner_id === user?.id;
 
@@ -42,8 +42,8 @@ function ClassLayout() {
         <div className="p-8 text-center">
           <p className="text-sm font-semibold">Class not available</p>
           <p className="mx-auto mt-1.5 max-w-sm text-sm text-mute">
-            You don't have access to this class, or it has been deleted. You can only open classes you
-            created or joined.
+            You don't have access to this class, or it has been deleted. You can only open classes
+            you created or joined.
           </p>
           <Link to="/classes" className="mt-4 inline-block text-sm text-oxblood hover:underline">
             Back to my classes
@@ -58,7 +58,9 @@ function ClassLayout() {
       <div className="overflow-hidden rounded-xl bg-ink text-paper">
         <div className="flex flex-wrap items-start justify-between gap-4 p-5">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.16em] text-paper/55">{cls.department}</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-paper/55">
+              {cls.department}
+            </p>
             <h1 className="mt-1 text-xl font-semibold tracking-tight">{cls.subject}</h1>
             <p className="num mt-1 text-[12px] text-paper/65">
               Sec {cls.section} · {cls.semester} · {cls.academic_year}

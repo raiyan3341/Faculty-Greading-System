@@ -1,4 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { useAuth } from "@/lib/auth";
 import {
   CalendarCheck,
   ClipboardList,
@@ -32,25 +34,85 @@ export const Route = createFileRoute("/")({
 });
 
 const features = [
-  { icon: GraduationCap, title: "Class Management", text: "Unlimited classes, each with its own code and ledger." },
-  { icon: Users, title: "Student Management", text: "Roster per class with roll, email and live standing." },
-  { icon: CalendarCheck, title: "Attendance Tracking", text: "Sessions by date with present, late and absent." },
-  { icon: ClipboardList, title: "CT / Quiz / Presentation", text: "Any number of assessments, plus custom ones." },
-  { icon: Sigma, title: "Mid & Final Marks", text: "Spreadsheet entry with maximum-mark validation." },
-  { icon: FileText, title: "Automatic Grading", text: "Configurable weights and letter-grade scale." },
-  { icon: ScanLine, title: "Student List Scanner", text: "Read names and roll numbers from a photo or PDF." },
-  { icon: FolderOpen, title: "Notes & Resources", text: "Share notices and study material with the class." },
-  { icon: FileSpreadsheet, title: "PDF / Excel Reports", text: "Official marksheet and attendance exports." },
+  {
+    icon: GraduationCap,
+    title: "Class Management",
+    text: "Unlimited classes, each with its own code and ledger.",
+  },
+  {
+    icon: Users,
+    title: "Student Management",
+    text: "Roster per class with roll, email and live standing.",
+  },
+  {
+    icon: CalendarCheck,
+    title: "Attendance Tracking",
+    text: "Sessions by date with present, late and absent.",
+  },
+  {
+    icon: ClipboardList,
+    title: "CT / Quiz / Presentation",
+    text: "Any number of assessments, plus custom ones.",
+  },
+  {
+    icon: Sigma,
+    title: "Mid & Final Marks",
+    text: "Spreadsheet entry with maximum-mark validation.",
+  },
+  {
+    icon: FileText,
+    title: "Automatic Grading",
+    text: "Configurable weights and letter-grade scale.",
+  },
+  {
+    icon: ScanLine,
+    title: "Student List Scanner",
+    text: "Read names and roll numbers from a photo or PDF.",
+  },
+  {
+    icon: FolderOpen,
+    title: "Notes & Resources",
+    text: "Share notices and study material with the class.",
+  },
+  {
+    icon: FileSpreadsheet,
+    title: "PDF / Excel Reports",
+    text: "Official marksheet and attendance exports.",
+  },
 ];
 
 const steps = [
   { n: "01", title: "Sign in", text: "Use your Google account. No separate registration." },
-  { n: "02", title: "Create or join a class", text: "Faculty create and share a code; students join with it." },
-  { n: "03", title: "Run the semester", text: "Roster, attendance, assessments and marks — all per class." },
-  { n: "04", title: "Generate the report", text: "Official PDF marksheet or Excel export in one click." },
+  {
+    n: "02",
+    title: "Create or join a class",
+    text: "Faculty create and share a code; students join with it.",
+  },
+  {
+    n: "03",
+    title: "Run the semester",
+    text: "Roster, attendance, assessments and marks — all per class.",
+  },
+  {
+    n: "04",
+    title: "Generate the report",
+    text: "Official PDF marksheet or Excel export in one click.",
+  },
 ];
 
 function Landing() {
+  const { session, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (loading || !session || typeof window === "undefined") return;
+    const isOAuthCallback =
+      window.location.search.includes("code=") || window.location.hash.includes("access_token=");
+    if (isOAuthCallback) {
+      void navigate({ to: "/dashboard", replace: true });
+    }
+  }, [loading, session, navigate]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
@@ -65,18 +127,24 @@ function Landing() {
             </div>
           </div>
           <nav className="hidden items-center gap-1 text-sm lg:flex">
-            <a href="#features" className="rounded-md px-3 py-1.5 text-inksoft transition-colors hover:bg-secondary">
+            <a
+              href="#features"
+              className="rounded-md px-3 py-1.5 text-inksoft transition-colors hover:bg-secondary"
+            >
               Features
             </a>
-            <a href="#how" className="rounded-md px-3 py-1.5 text-inksoft transition-colors hover:bg-secondary">
+            <a
+              href="#how"
+              className="rounded-md px-3 py-1.5 text-inksoft transition-colors hover:bg-secondary"
+            >
               How it works
             </a>
           </nav>
           <Link
-            to="/auth"
+            to={session ? "/dashboard" : "/auth"}
             className="rounded-md bg-oxblood px-3.5 py-1.5 text-sm font-medium text-paper transition-colors hover:bg-sealred"
           >
-            Get started
+            {session ? "Dashboard" : "Get started"}
           </Link>
         </div>
       </header>
@@ -100,10 +168,10 @@ function Landing() {
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <Link
-                  to="/auth"
+                  to={session ? "/dashboard" : "/auth"}
                   className="rounded-md bg-paper px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-cream"
                 >
-                  Login / Get started
+                  {session ? "Open Dashboard" : "Login / Get started"}
                 </Link>
                 <a href="#how" className="text-sm text-paper/70 transition-colors hover:text-paper">
                   See how it works →

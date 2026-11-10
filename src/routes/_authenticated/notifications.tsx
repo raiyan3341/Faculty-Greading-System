@@ -11,7 +11,10 @@ export const Route = createFileRoute("/_authenticated/notifications")({
   head: () => ({
     meta: [
       { title: "Notifications — Registrar" },
-      { name: "description", content: "New notices, resources, assessments, marks and attendance updates." },
+      {
+        name: "description",
+        content: "New notices, resources, assessments, marks and attendance updates.",
+      },
       { property: "og:title", content: "Notifications — Registrar" },
       { property: "og:description", content: "Updates from the classes you joined." },
     ],
@@ -27,9 +30,11 @@ function Notifications() {
   const unread = rows.filter((n) => !n.read_at);
 
   async function markAllRead() {
+    if (!user) return;
     const { error } = await supabase
       .from("notifications")
       .update({ read_at: new Date().toISOString() })
+      .eq("user_id", user.id)
       .is("read_at", null);
     if (error) {
       toast.error(error.message);
@@ -51,7 +56,9 @@ function Notifications() {
           title="Recent updates"
           hint={`${rows.length} total`}
           actions={
-            unread.length ? <LedgerButton onClick={() => void markAllRead()}>Mark all read</LedgerButton> : null
+            unread.length ? (
+              <LedgerButton onClick={() => void markAllRead()}>Mark all read</LedgerButton>
+            ) : null
           }
         />
         {isLoading ? (
